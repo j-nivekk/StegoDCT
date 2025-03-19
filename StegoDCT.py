@@ -5,19 +5,15 @@ StegoDCT: A CLI tool for embedding and extracting textual messages in images usi
 This module provides functionality to imperceptibly inscribe textual data within the frequency 
 domain of JPEG and PNG images through manipulation of discrete cosine transform coefficients.
 
-Usage examples:
-  # Embed a message into an image and save as PNG:
-  python3 StegoDCT.py encrypt -i input.jpg -m "Secret message" -o output -f png
-  
-  # Extract a message from an image:
-  python3 StegoDCT.py decrypt -i output.png
+Usage:
+  # Run the program and follow the interactive prompts:
+  python3 StegoDCT.py
   
 The technique works by modifying the DCT coefficients in the mid-frequency range, 
 ensuring that changes remain imperceptible to the human eye while being robust 
 enough to survive common image processing operations.
 """
 
-import argparse
 import numpy as np
 import cv2
 from PIL import Image
@@ -283,105 +279,210 @@ class StegoDCT:
         
         # Convert bits to string
         return self._bits_to_string(extracted_bits)
+    
+    def calculate_max_message_length(self, image_path: str) -> int:
+        """
+        Calculate the maximum message length (in characters) that can be embedded in an image.
+        
+        Args:
+            image_path: Path to the input image
+            
+        Returns:
+            Maximum number of characters that can be embedded
+        """
+        img = self._prepare_image(image_path)
+        height, width, channels = img.shape
+        
+        # Calculate the maximum number of bits we can embed
+        blocks_height = height // self.BLOCK_SIZE
+        blocks_width = width // self.BLOCK_SIZE
+        max_bits = blocks_height * blocks_width * channels
+        
+        # Account for termination sequence (16 bits)
+        max_bits -= 16
+        
+        # Convert to maximum UTF-8 characters (approximate, assumes 1 byte per character)
+        # In the worst case, a UTF-8 character can be up to 4 bytes
+        max_chars = max_bits // 8  # 8 bits per byte
+        
+        return max_chars
+
+
+def interactive_mode():
+    """Run the program in interactive mode with step-by-step prompts."""
+    print("\n=== StegoDCT - Interactive Mode ===")
+    print("This tool allows you to hide messages in images or extract hidden messages.\n")
+    
+    # Step 1: Choose operation
+    print("Step 1: Select operation")
+    print("1. Encrypt (Hide a message in an image)")
+    print("2. Decrypt (Extract a message from an image)")
+    
+    while True:
+        try:
+            choice = input("\nEnter your choice (1 or 2): ").strip()
+            if choice == '1':
+                encrypt_interactive()
+                break
+            elif choice == '2':
+                decrypt_interactive()
+                break
+            else:
+                print("Invalid choice. Please enter 1 or 2.")
+        except Exception as e:
+            print(f"Error: {e}")
+
+
+def encrypt_interactive():
+    """Interactive encryption flow."""
+    steganographer = StegoDCT()
+    
+    # Step 2: Get input image
+    print("\nStep 2: Select input image (PNG or JPEG)")
+    print("Drag and drop your image file here, or enter the path:")
+    
+    while True:
+        try:
+            image_path = input().strip()
+            # Remove quotes that might be added by drag-and-drop
+            image_path = image_path.strip('"\'')
+            
+            if not os.path.exists(image_path):
+                print(f"File not found: {image_path}")
+                print("Please try again:")
+                continue
+                
+            # Calculate maximum message length
+            max_length = steganographer.calculate_max_message_length(image_path)
+            print(f"\nMaximum message length: {max_length} characters")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+            print("Please try again:")
+    
+    # Step 3: Get message to encrypt
+    print("\nStep 3: Enter the message to hide in the image")
+    print(f"(Maximum {max_length} characters)")
+    
+    while True:
+        try:
+            message = input("Message: ")
+            if not message:
+                print("Message cannot be empty. Please try again:")
+                continue
+                
+            if len(message) > max_length:
+                print(f"Message is too long. Maximum length is {max_length} characters.")
+                print("Please try again:")
+                continue
+                
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+            print("Please try again:")
+    
+    # Step 4: Select output format
+    print("\nStep 4: Select output format")
+    print("1. PNG (better quality, recommended)")
+    print("2. JPEG (smaller file size)")
+    
+    output_format = "png"
+    while True:
+        try:
+            format_choice = input("Enter your choice (1 or 2): ").strip()
+            if format_choice == '1':
+                output_format = "png"
+                break
+            elif format_choice == '2':
+                output_format = "jpeg"
+                break
+            else:
+                print("Invalid choice. Please enter 1 or 2.")
+        except Exception as e:
+            print(f"Error: {e}")
+    
+    # Step 5: Get output path
+    print("\nStep 5: Enter output filename (without extension)")
+    
+    while True:
+        try:
+            output_name = input("Output filename: ").strip()
+            if not output_name:
+                # Use input filename with _secret suffix
+                base = os.path.basename(image_path)
+                name_without_ext = os.path.splitext(base)[0]
+                output_name = f"{name_without_ext}_secret"
+                print(f"Using default filename: {output_name}")
+            
+            # Add extension based on format
+            ext = ".png" if output_format == "png" else ".jpg"
+            output_path = output_name
+            
+            # Confirm before proceeding
+            print(f"\nReady to create: {output_path}{ext}")
+            confirm = input("Proceed? (y/n): ").lower()
+            if confirm != 'y':
+                print("Operation cancelled. Please try again:")
+                continue
+                
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+            print("Please try again:")
+    
+    # Process the encryption
+    print("\nProcessing...")
+    try:
+        steganographer.encrypt(image_path, message, output_path, output_format)
+        print(f"\nSuccess! Message has been hidden in {output_path}{ext}")
+    except Exception as e:
+        print(f"Error during encryption: {e}")
+
+
+def decrypt_interactive():
+    """Interactive decryption flow."""
+    steganographer = StegoDCT()
+    
+    # Step 2: Get input image
+    print("\nStep 2: Select image with hidden message")
+    print("Drag and drop your image file here, or enter the path:")
+    
+    while True:
+        try:
+            image_path = input().strip()
+            # Remove quotes that might be added by drag-and-drop
+            image_path = image_path.strip('"\'')
+            
+            if not os.path.exists(image_path):
+                print(f"File not found: {image_path}")
+                print("Please try again:")
+                continue
+                
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+            print("Please try again:")
+    
+    # Process the decryption
+    print("\nProcessing...")
+    try:
+        message = steganographer.decrypt(image_path)
+        print("\n=== Extracted Message ===")
+        print(message)
+        print("========================")
+    except Exception as e:
+        print(f"Error during decryption: {e}")
 
 
 def main():
-    """CLI entry point."""
-    parser = argparse.ArgumentParser(
-        description="""
-StegoDCT - A tool for embedding and extracting messages in images using DCT watermarking
-
-This tool allows you to:
-1. Hide text messages within images using the Discrete Cosine Transform (DCT) technique
-2. Extract hidden messages from images that were previously encoded
-
-The technique works by subtly modifying frequency coefficients in the image in a way that is 
-imperceptible to human vision but can be detected by the algorithm.
-
-ADVANTAGES:
-- Provides strong resistance against visual detection
-- Works with both JPEG and PNG images
-- Maintains high visual quality of the carrier image
-- Survives moderate image processing operations
-""",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-EXAMPLES:
-  # Embed a message in an image and save as PNG:
-  python3 StegoDCT.py encrypt -i input.jpg -m "Secret message" -o output -f png
-  
-  # Extract a message from a stego image:
-  python3 StegoDCT.py decrypt -i output.png
-  
-For best results, use PNG as the output format for maximum message preservation.
-"""
-    )
-    
-    subparsers = parser.add_subparsers(dest="command", help="Commands")
-    
-    # Encrypt command
-    encrypt_parser = subparsers.add_parser("encrypt", 
-        help="Embed a message into an image",
-        description="""
-Embed a text message into an image using the DCT steganography technique.
-
-The process divides the image into 8x8 pixel blocks and modifies specific 
-frequency coefficients to encode the message bits. The visual appearance 
-of the image is preserved while the message is securely embedded.
-
-The message length is limited by the image dimensions - larger images can 
-store longer messages. The tool will automatically calculate and verify if
-your message will fit in the provided image.
-""",
-        formatter_class=argparse.RawDescriptionHelpFormatter)
-        
-    encrypt_parser.add_argument("-i", "--input", required=True, 
-                            help="Input image path (supports JPG, PNG and other common formats)")
-    encrypt_parser.add_argument("-m", "--message", required=True, 
-                            help="Text message to embed in the image")
-    encrypt_parser.add_argument("-o", "--output", required=True, 
-                            help="Output image path (extension will be added automatically based on format)")
-    encrypt_parser.add_argument("-f", "--format", choices=["png", "jpeg"], default="png", 
-                            help="Output format: png (better quality/recommended) or jpeg (smaller size)")
-    encrypt_parser.add_argument("--max-size", type=int, 
-                            help="Maximum file size in bytes (optional, limits the size of input file)")
-    
-    # Decrypt command
-    decrypt_parser = subparsers.add_parser("decrypt", 
-        help="Extract a message from an image",
-        description="""
-Extract a hidden message from an image that was previously encoded using this tool.
-
-The process analyzes the DCT coefficients of 8x8 pixel blocks to recover the 
-embedded message bits. The extraction process terminates when it encounters 
-the special termination sequence (16 consecutive '1' bits).
-
-Note that if the image has been modified, compressed, or processed after the 
-message was embedded, the extraction may fail or produce incomplete/corrupted results.
-""",
-        formatter_class=argparse.RawDescriptionHelpFormatter)
-        
-    decrypt_parser.add_argument("-i", "--input", required=True, 
-                             help="Path to the image containing the hidden message")
-    
-    args = parser.parse_args()
-    
-    if args.command is None:
-        parser.print_help()
-        sys.exit(1)
-    
+    """Main entry point."""
     try:
-        if args.command == "encrypt":
-            steganographer = StegoDCT(max_file_size=args.max_size)
-            steganographer.encrypt(args.input, args.message, args.output, args.format)
-        
-        elif args.command == "decrypt":
-            steganographer = StegoDCT()
-            message = steganographer.decrypt(args.input)
-            print(f"Extracted message: {message}")
-    
+        interactive_mode()
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user.")
+        sys.exit(0)
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
         sys.exit(1)
 
 
